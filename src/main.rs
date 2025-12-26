@@ -173,15 +173,13 @@ pub struct Eqp<A: Expr, B: Expr>(PhantomData<(A, B)>);
 
 impl<A: Expr, B: Expr> Expr for Eqp<A, B> {}
 
-/// Trait representing a cons cell.
-///
-/// Any non-empty list node can implement this to expose its `Head` and `Tail`.
-pub trait ConsCell: List {
+/// Trait representing a cons cell (pair).
+pub trait ConsCell {
     type Head;
-    type Tail: List;
+    type Tail;
 }
 
-impl<H, T: List> ConsCell for Cons<H, T> {
+impl<H, T> ConsCell for Cons<H, T> {
     type Head = H;
     type Tail = T;
 }
@@ -2508,6 +2506,29 @@ fn main() {
     println!(
         "(begin (defun foo () 1) (foo)) => {:?}",
         <BeginDefunCall as ToRtValue>::to_rt()
+    );
+
+    defkey!(Assq, N0);
+    defkey!(LIST, N1);
+    defkey!(KEY, N2);
+    type AssqDef = expr!(
+    (defun Assq (KEY LIST)
+        (if (equalp LIST nil)
+            nil
+            (if (equalp (car (car LIST)) KEY)
+                (car LIST)
+                (apply Assq (cons KEY (cons (cdr LIST) nil)))))));
+    type GlobalAssq = <AssqDef as EvalForm<ANil, ANil>>::GlobalOut;
+    type AssqResult = EvalValue<
+        expr!(
+            (Assq 2 (cons (cons 1 10) (cons (cons 2 20) (cons (cons 3 30) nil))))),
+        GlobalAssq,
+        ANil,
+    >;
+
+    println!(
+        "(assq 2 (cons (cons 1 10) (cons (cons 2 20) (cons (cons 3 30) nil)))) => {:?}",
+        <AssqResult as ToRtValue>::to_rt()
     );
 }
 
