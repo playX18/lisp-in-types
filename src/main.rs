@@ -2525,38 +2525,37 @@ type GlobalFac = <Fac as EvalForm<ANil, ANil>>::GlobalOut;
 type FacOf5 = EvalValue<expr!((SymFac 5 1)), GlobalFac, ANil>;
 const _: () = assert_same::<FacOf5, N120>();
 
-defkey!(SymLength, N0);
+defkey!(SLength, N0);
 
 type LengthFunc = expr!(
-    (defun SymLength (SymLst)
-        (if (equalp SymLst nil)
+    (defun SLength (Lst)
+        (if (equalp Lst nil)
             0
-            (+ 1 (SymLength (cdr SymLst))))));
+            (+ 1 (SLength (cdr Lst))))));
 
 type GlobalLength = <LengthFunc as EvalForm<ANil, ANil>>::GlobalOut;
-type LengthOfList =
-    EvalValue<expr!((SymLength (cons 1 (cons 2 (cons 3 nil))))), GlobalLength, ANil>;
+type LengthOfList = EvalValue<expr!((SLength (cons 1 (cons 2 (cons 3 nil))))), GlobalLength, ANil>;
 const _: () = assert_same::<LengthOfList, N3>();
 
-defkey!(SymMap, N0);
-defkey!(SymFunc, N1);
-defkey!(SymLst, N2);
-defkey!(SymTmp, N3);
-defkey!(SymOne, N4);
+defkey!(Map, N0);
+defkey!(Func, N1);
+defkey!(Lst, N2);
+defkey!(Tmp, N3);
+defkey!(One, N4);
 
 type MapFunc = expr!(
-    (defun SymMap (SymFunc SymLst)
-        (if (equalp SymLst nil)
+    (defun Map (Func Lst)
+        (if (equalp Lst nil)
             nil
             (cons
-                (apply SymFunc (cons (car SymLst) nil))
-                (SymMap SymFunc (cdr SymLst))))));
+                (apply Func (cons (car Lst) nil))
+                (Map Func (cdr Lst))))));
 
 type GlobalMap = <MapFunc as EvalForm<ANil, ANil>>::GlobalOut;
 type MapResult = EvalValue<
     expr!(
-    (let ((SymOne 1))
-        (SymMap (lambda(SymTmp) (+ SymOne SymTmp)) (cons 1 (cons 2 (cons 3 nil)))))),
+    (let ((One 1))
+        (Map (lambda(Tmp) (+ One Tmp)) (cons 1 (cons 2 (cons 3 nil)))))),
     GlobalMap,
     ANil,
 >;
