@@ -2285,6 +2285,9 @@ macro_rules! expr {
     ((equalp $a:tt $b:tt)) => {
         $crate::Equalp<expr!($a), expr!($b)>
     };
+    ((apply $f:tt $args:tt)) => {
+        $crate::ApplyExpr<expr!($f), expr!($args)>
+    };
 
     ((let ( $( ( $k:ident $v:tt ) )* ) $body:tt)) => {
         let_!(
@@ -2546,7 +2549,7 @@ type MapFunc = expr!(
         (if (equalp SymLst nil)
             nil
             (cons
-                (SymFunc (car SymLst))
+                (apply SymFunc (cons (car SymLst) nil))
                 (SymMap SymFunc (cdr SymLst))))));
 
 type GlobalMap = <MapFunc as EvalForm<ANil, ANil>>::GlobalOut;
