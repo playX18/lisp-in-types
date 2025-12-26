@@ -183,8 +183,6 @@ where
 {
     const VALUE: usize = 1 + T::VALUE;
 }
-
-/// Proof that two types are the same (used for compile-time assertions).
 pub trait Same<T> {}
 impl<T> Same<T> for T {}
 
@@ -251,12 +249,7 @@ impl ToBool for False {
 }
 
 /// Convert a type-level value into a runtime enum.
-///
-/// Implemented for:
-/// - `Z`, `S<N>` (as `RtValue::Nat`)
-/// - `True`, `False` (as `RtValue::Bool`)
-/// - `Nil`, `Cons<H, T>` where `H: ToRtValue` (as `RtValue::List`)
-/// - `KeyId<K>` (as `RtValue::Key`)
+
 pub trait ToRtValue {
     fn to_rt() -> RtValue;
 }
