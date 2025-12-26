@@ -141,6 +141,8 @@ pub trait NonNilList: List {}
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Nil;
 
+impl Expr for Nil {}
+
 impl List for Nil {}
 
 /// A cons cell (pair) containing `H` (head) and `T` (tail).
@@ -154,6 +156,22 @@ impl<H: Expr, T: Expr> Expr for Cons<H, T> {}
 impl<H, T: List> List for Cons<H, T> {}
 
 impl<H, T: List> NonNilList for Cons<H, T> {}
+
+pub struct Car<L>(PhantomData<L>);
+pub struct Cdr<L>(PhantomData<L>);
+
+impl<L> Expr for Car<L> {}
+impl<L> Expr for Cdr<L> {}
+
+/// Deep equality: compare numbers like `=` and lists/pairs recursively.
+pub struct Equalp<A: Expr, B: Expr>(PhantomData<(A, B)>);
+
+impl<A: Expr, B: Expr> Expr for Equalp<A, B> {}
+
+/// eqp: type-level equality on expressions.
+pub struct Eqp<A: Expr, B: Expr>(PhantomData<(A, B)>);
+
+impl<A: Expr, B: Expr> Expr for Eqp<A, B> {}
 
 /// Trait representing a cons cell.
 ///
@@ -200,6 +218,68 @@ pub struct True;
 pub struct False;
 impl BoolT for True {}
 impl BoolT for False {}
+
+/// Type-level boolean AND.
+pub trait BoolAnd<Rhs: BoolT>: BoolT {
+    type Output: BoolT;
+}
+
+impl<Rhs: BoolT> BoolAnd<Rhs> for True {
+    type Output = Rhs;
+}
+
+impl<Rhs: BoolT> BoolAnd<Rhs> for False {
+    type Output = False;
+}
+
+/// Type-level deep equality for evaluated values.
+pub trait EqualpVal<Rhs> {
+    type Output: BoolT;
+}
+
+impl<A: Nat, B: Nat> EqualpVal<B> for A
+where
+    A: EqNat<B>,
+{
+    type Output = <A as EqNat<B>>::Output;
+}
+
+impl EqualpVal<Nil> for Nil {
+    type Output = True;
+}
+
+impl<AH, AT, BH, BT> EqualpVal<Cons<BH, BT>> for Cons<AH, AT>
+where
+    AH: EqualpVal<BH>,
+    AT: EqualpVal<BT>,
+    <AH as EqualpVal<BH>>::Output: BoolAnd<<AT as EqualpVal<BT>>::Output>,
+{
+    type Output = <<AH as EqualpVal<BH>>::Output as BoolAnd<<AT as EqualpVal<BT>>::Output>>::Output;
+}
+
+impl<A: Nat> EqualpVal<Nil> for A {
+    type Output = False;
+}
+
+impl<A: Nat, BH, BT> EqualpVal<Cons<BH, BT>> for A {
+    type Output = False;
+}
+
+impl<B: Nat> EqualpVal<B> for Nil {
+    type Output = False;
+}
+
+impl<BH, BT> EqualpVal<Cons<BH, BT>> for Nil {
+    type Output = False;
+}
+
+impl<AH, AT> EqualpVal<Nil> for Cons<AH, AT> {
+    type Output = False;
+}
+
+impl<AH, AT, B: Nat> EqualpVal<B> for Cons<AH, AT> {
+    type Output = False;
+}
 
 /// Type-level naturals (Peano encoding).
 pub trait Nat: Expr {}
@@ -822,6 +902,62 @@ pub trait Eval<Global: AList, Lex: AList>: Expr {
 
 impl<Global: AList, Lex: AList, V> Eval<Global, Lex> for Const<V> {
     type Value = Ok<V>;
+}
+
+impl<Global: AList, Lex: AList> Eval<Global, Lex> for Nil {
+    type Value = Ok<Nil>;
+}
+
+pub trait EvalCarDispatch<Global: AList, Lex: AList, Arg: Expr, C: Control> {
+    type Out: Control;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr, Tag, V> EvalCarDispatch<Global, Lex, Arg, Escape<Tag, V>>
+    for Car<Arg>
+{
+    type Out = Escape<Tag, V>;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr, V> EvalCarDispatch<Global, Lex, Arg, Ok<V>> for Car<Arg>
+where
+    V: ConsCell,
+{
+    type Out = Ok<<V as ConsCell>::Head>;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr> Eval<Global, Lex> for Car<Arg>
+where
+    Arg: Eval<Global, Lex>,
+    Car<Arg>: EvalCarDispatch<Global, Lex, Arg, <Arg as Eval<Global, Lex>>::Value>,
+{
+    type Value =
+        <Car<Arg> as EvalCarDispatch<Global, Lex, Arg, <Arg as Eval<Global, Lex>>::Value>>::Out;
+}
+
+pub trait EvalCdrDispatch<Global: AList, Lex: AList, Arg: Expr, C: Control> {
+    type Out: Control;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr, Tag, V> EvalCdrDispatch<Global, Lex, Arg, Escape<Tag, V>>
+    for Cdr<Arg>
+{
+    type Out = Escape<Tag, V>;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr, V> EvalCdrDispatch<Global, Lex, Arg, Ok<V>> for Cdr<Arg>
+where
+    V: ConsCell,
+{
+    type Out = Ok<<V as ConsCell>::Tail>;
+}
+
+impl<Global: AList, Lex: AList, Arg: Expr> Eval<Global, Lex> for Cdr<Arg>
+where
+    Arg: Eval<Global, Lex>,
+    Cdr<Arg>: EvalCdrDispatch<Global, Lex, Arg, <Arg as Eval<Global, Lex>>::Value>,
+{
+    type Value =
+        <Cdr<Arg> as EvalCdrDispatch<Global, Lex, Arg, <Arg as Eval<Global, Lex>>::Value>>::Out;
 }
 
 pub trait EvalConsDispatch<Global: AList, Lex: AList, H: Expr, T: Expr, CH: Control> {
@@ -1485,6 +1621,70 @@ where
         <Eq<A, B> as EqLeftDispatch<Global, Lex, A, B, <A as Eval<Global, Lex>>::Value>>::Out;
 }
 
+pub trait EqualpLeftDispatch<Global: AList, Lex: AList, A: Expr, B: Expr, CA: Control> {
+    type Out: Control;
+}
+
+impl<Global: AList, Lex: AList, A: Expr, B: Expr, Tag, V>
+    EqualpLeftDispatch<Global, Lex, A, B, Escape<Tag, V>> for Equalp<A, B>
+{
+    type Out = Escape<Tag, V>;
+}
+
+pub trait EqualpRightDispatch<Global: AList, Lex: AList, AVal: Expr, B: Expr, CB: Control> {
+    type Out: Control;
+}
+
+impl<Global: AList, Lex: AList, AVal: Expr, B: Expr, Tag, V>
+    EqualpRightDispatch<Global, Lex, AVal, B, Escape<Tag, V>> for Equalp<Const<AVal>, B>
+{
+    type Out = Escape<Tag, V>;
+}
+
+impl<Global: AList, Lex: AList, AVal: Expr, B: Expr, BVal>
+    EqualpRightDispatch<Global, Lex, AVal, B, Ok<BVal>> for Equalp<Const<AVal>, B>
+where
+    AVal: EqualpVal<BVal>,
+{
+    type Out = Ok<<AVal as EqualpVal<BVal>>::Output>;
+}
+
+impl<Global, Lex, A, B, AVal> EqualpLeftDispatch<Global, Lex, A, B, Ok<AVal>> for Equalp<A, B>
+where
+    Global: AList,
+    Lex: AList,
+    A: Expr,
+    B: Expr + Eval<Global, Lex>,
+    AVal: Expr,
+    Equalp<Const<AVal>, B>:
+        EqualpRightDispatch<Global, Lex, AVal, B, <B as Eval<Global, Lex>>::Value>,
+{
+    type Out = <Equalp<Const<AVal>, B> as EqualpRightDispatch<
+        Global,
+        Lex,
+        AVal,
+        B,
+        <B as Eval<Global, Lex>>::Value,
+    >>::Out;
+}
+
+impl<Global, Lex, A, B> Eval<Global, Lex> for Equalp<A, B>
+where
+    Global: AList,
+    Lex: AList,
+    A: Expr + Eval<Global, Lex>,
+    B: Expr,
+    Equalp<A, B>: EqualpLeftDispatch<Global, Lex, A, B, <A as Eval<Global, Lex>>::Value>,
+{
+    type Value = <Equalp<A, B> as EqualpLeftDispatch<
+        Global,
+        Lex,
+        A,
+        B,
+        <A as Eval<Global, Lex>>::Value,
+    >>::Out;
+}
+
 pub trait LtLeftDispatch<Global: AList, Lex: AList, A: Expr, B: Expr, CA: Control> {
     type Out: Control;
 }
@@ -2053,6 +2253,9 @@ macro_rules! expr {
     ((cons $a:tt $b:tt)) => {
         $crate::Cons<expr!($a), expr!($b)>
     };
+    (nil) => {
+        $crate::Nil
+    };
 
     ((lambda ( $( $param:ident )* ) $body:tt)) => {
         $crate::Lambda<list_t!($( $param ),*), expr!($body)>
@@ -2069,6 +2272,18 @@ macro_rules! expr {
 
     ((callec $tag:ident $f:tt)) => {
         $crate::CallEC<$tag, expr!($f)>
+    };
+
+    ((cdr $a:tt)) => {
+        $crate::Cdr<expr!($a)>
+    };
+
+    ((car $a:tt)) => {
+        $crate::Car<expr!($a)>
+    };
+
+    ((equalp $a:tt $b:tt)) => {
+        $crate::Equalp<expr!($a), expr!($b)>
     };
 
     ((let ( $( ( $k:ident $v:tt ) )* ) $body:tt)) => {
@@ -2111,6 +2326,10 @@ macro_rules! expr {
 
     ((= $a:tt $b:tt)) => {
         $crate::Eq<expr!($a), expr!($b)>
+    };
+
+    ((equalp $a:tt $b:tt)) => {
+        $crate::Equalp<expr!($a), expr!($b)>
     };
 
     ((< $a:tt $b:tt)) => {
@@ -2302,3 +2521,41 @@ type Fac = expr!(
 type GlobalFac = <Fac as EvalForm<ANil, ANil>>::GlobalOut;
 type FacOf5 = EvalValue<expr!((SymFac 5 1)), GlobalFac, ANil>;
 const _: () = assert_same::<FacOf5, N120>();
+
+defkey!(SymLength, N0);
+
+type LengthFunc = expr!(
+    (defun SymLength (SymLst)
+        (if (equalp SymLst nil)
+            0
+            (+ 1 (SymLength (cdr SymLst))))));
+
+type GlobalLength = <LengthFunc as EvalForm<ANil, ANil>>::GlobalOut;
+type LengthOfList =
+    EvalValue<expr!((SymLength (cons 1 (cons 2 (cons 3 nil))))), GlobalLength, ANil>;
+const _: () = assert_same::<LengthOfList, N3>();
+
+defkey!(SymMap, N0);
+defkey!(SymFunc, N1);
+defkey!(SymLst, N2);
+defkey!(SymTmp, N3);
+defkey!(SymOne, N4);
+
+type MapFunc = expr!(
+    (defun SymMap (SymFunc SymLst)
+        (if (equalp SymLst nil)
+            nil
+            (cons
+                (SymFunc (car SymLst))
+                (SymMap SymFunc (cdr SymLst))))));
+
+type GlobalMap = <MapFunc as EvalForm<ANil, ANil>>::GlobalOut;
+type MapResult = EvalValue<
+    expr!(
+    (let ((SymOne 1))
+        (SymMap (lambda(SymTmp) (+ SymOne SymTmp)) (cons 1 (cons 2 (cons 3 nil)))))),
+    GlobalMap,
+    ANil,
+>;
+
+const _: () = assert_same::<MapResult, Cons<N2, Cons<N3, Cons<N4, Nil>>>>();
